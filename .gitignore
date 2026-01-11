@@ -1,0 +1,108 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Data directories (large files)
+data/raw/
+data/processed/
+data/cache/
+*.parquet
+*.h5
+*.hdf5
+
+# Logs
+logs/
+*.log
+
+# Results (backtest outputs, keep .gitkeep)
+results/backtests/*/
+results/optimizations/*/
+results/comparisons/*.csv
+!results/.gitkeep
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb_metadata
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
+# Docker
+.docker/
+
+# Secrets (never commit)
+*.pem
+*.key
+credentials.json
+secrets.yaml
+
+
+# Local files
+.DS_Store
+.vscode
+.env
+.env.local
+.env.*.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+/src/data/raw/
+/src/data/processed/
+/src/data/cache/
+/src/data/logs/
+/src/data/results/
+/src/data/tests/
+/src/data/tests/
+
+nul

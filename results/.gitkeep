@@ -1,0 +1,2 @@
+# This file ensures the results directory is tracked by git
+# but individual backtest results are gitignored

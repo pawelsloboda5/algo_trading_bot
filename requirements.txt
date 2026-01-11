@@ -1,0 +1,41 @@
+# Core dependencies for algo trading bot
+# Install with: pip install -r requirements.txt
+
+# Data & API
+databento>=0.41.0
+ib-async>=1.0.0
+
+# Data Processing
+pandas>=2.2.0
+numpy>=1.26.0
+polars>=0.20.0
+
+# Technical Analysis
+numba>=0.59.0
+
+# Configuration
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+
+# Async
+aiohttp>=3.9.0
+
+# Storage
+pyarrow>=15.0.0
+
+# Visualization & Reporting
+matplotlib>=3.8.0
+plotly>=5.18.0
+streamlit>=1.30.0
+
+# Logging & Monitoring
+structlog>=24.1.0
+
+# CLI
+click>=8.1.0
+rich>=13.7.0
+
+# Utilities
+tenacity>=8.2.0

@@ -1,0 +1,100 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "algo_trading_bot"
+version = "0.1.0"
+description = "Algorithmic trading system for crude oil futures"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [
+    { name = "Pawel Sloboda" }
+]
+
+dependencies = [
+    # Data & API
+    "databento>=0.41.0",
+    "ib-async>=1.0.0",
+
+    # Data Processing
+    "pandas>=2.2.0",
+    "numpy>=1.26.0",
+    "polars>=0.20.0",
+
+    # Technical Analysis
+    "numba>=0.59.0",
+
+    # Configuration
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0.0",
+
+    # Async
+    "aiohttp>=3.9.0",
+
+    # Storage
+    "pyarrow>=15.0.0",
+
+    # Visualization & Reporting
+    "matplotlib>=3.8.0",
+    "plotly>=5.18.0",
+    "dash>=2.14.0",
+    "dash-bootstrap-components>=1.5.0",
+    "streamlit>=1.30.0",
+
+    # Logging & Monitoring
+    "structlog>=24.1.0",
+
+    # CLI
+    "click>=8.1.0",
+    "rich>=13.7.0",
+
+    # Utilities
+    "tenacity>=8.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.8.0",
+    "ruff>=0.1.0",
+    "pre-commit>=3.6.0",
+    "jupyter>=1.0.0",
+    "ipykernel>=6.28.0",
+]
+
+infra = [
+    "boto3>=1.34.0",
+    "docker>=7.0.0",
+]
+
+[project.scripts]
+download-data = "scripts.download_historical:main"
+backtest = "scripts.run_backtest:main"
+paper-trade = "scripts.run_paper_trading:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "config", "scripts"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

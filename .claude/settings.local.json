@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Bash(python research/mcl_microstructure_analysis.py:*)",
+      "Bash(.venvScriptspython.exe research/mcl_microstructure_analysis.py)"
+    ]
+  }
+}
