@@ -25,6 +25,7 @@ from src.strategy.mean_reversion_strategy import (
     MeanReversionStrategy,
     create_conservative_config,
     create_aggressive_config,
+    create_optimized_config,
 )
 from src.strategy.session_filter import SessionFilter, TradingSession
 

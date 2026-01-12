@@ -20,9 +20,11 @@ from src.strategy.mean_reversion_strategy import (
     MeanReversionStrategy,
     MeanReversionConfig,
     create_conservative_config,
+    create_optimized_config,
 )
 from src.strategy.scalping_strategy import ScalpingStrategy, ScalpingConfig
 from src.strategy.base_strategy import Signal
+from src.backtest.engine import BacktestEngine, BacktestConfig
 
 DATA_DIR = Path(__file__).parent.parent / "data" / "raw"
 storage = DataStorage(DATA_DIR)
@@ -242,6 +244,89 @@ def simple_backtest(
     }
 
 
+def engine_backtest(
+    data: pd.DataFrame,
+    strategy,
+    initial_capital: float = 5_000.0,
+) -> dict:
+    """Run backtest using the BacktestEngine with multi-level exits.
+
+    Args:
+        data: OHLCV DataFrame
+        strategy: Strategy instance
+        initial_capital: Starting capital
+
+    Returns:
+        Dictionary with backtest results
+    """
+    # Prepare data with proper index
+    df = data.copy()
+    if 'ts_event' in df.columns:
+        df['ts_event'] = pd.to_datetime(df['ts_event'])
+        if df['ts_event'].dt.tz is None:
+            df['ts_event'] = df['ts_event'].dt.tz_localize('UTC')
+        df = df.set_index('ts_event')
+
+    # Create backtest engine with risk management disabled for fair comparison
+    config = BacktestConfig(
+        initial_capital=initial_capital,
+        use_risk_manager=False,  # Disable to get raw strategy performance
+        position_size=1,  # 1 contract
+    )
+    engine = BacktestEngine(config)
+
+    try:
+        result = engine.run(df, strategy)
+
+        # Extract metrics
+        trades_df = result.trades
+        if trades_df.empty:
+            return {
+                'total_trades': 0,
+                'win_rate': 0,
+                'total_pnl': 0,
+                'avg_pnl': 0,
+                'profit_factor': 0,
+                'max_drawdown': 0,
+                'trades': [],
+            }
+
+        wins = trades_df[trades_df['pnl'] > 0]
+        losses = trades_df[trades_df['pnl'] <= 0]
+
+        total_wins = wins['pnl'].sum() if len(wins) > 0 else 0
+        total_losses = abs(losses['pnl'].sum()) if len(losses) > 0 else 0
+
+        return {
+            'total_trades': result.metrics.total_trades,
+            'win_rate': result.metrics.win_rate,
+            'total_pnl': result.metrics.total_return,  # total_return is the $ P&L
+            'avg_pnl': result.metrics.avg_trade_pnl,
+            'avg_win': result.metrics.avg_winner,
+            'avg_loss': result.metrics.avg_loser,
+            'profit_factor': result.metrics.profit_factor,
+            'max_drawdown': result.metrics.max_drawdown,
+            'longs': len(trades_df[trades_df['direction'] == 'LONG']) if 'direction' in trades_df.columns else 0,
+            'shorts': len(trades_df[trades_df['direction'] == 'SHORT']) if 'direction' in trades_df.columns else 0,
+            'stop_outs': len(trades_df[trades_df['exit_type'] == 'stop_loss']) if 'exit_type' in trades_df.columns else 0,
+            'targets_hit': len(trades_df[trades_df['exit_type'].str.contains('target', na=False)]) if 'exit_type' in trades_df.columns else 0,
+            'time_stops': len(trades_df[trades_df['exit_type'] == 'time_stop']) if 'exit_type' in trades_df.columns else 0,
+            'trades': trades_df.to_dict('records'),
+        }
+    except Exception as e:
+        print(f"  Error: {e}")
+        return {
+            'total_trades': 0,
+            'win_rate': 0,
+            'total_pnl': 0,
+            'avg_pnl': 0,
+            'profit_factor': 0,
+            'max_drawdown': 0,
+            'trades': [],
+            'error': str(e),
+        }
+
+
 def main():
     """Run comparison backtest."""
     print("="*80)
@@ -263,9 +348,9 @@ def main():
 
     # Initialize strategies
     strategies = {
+        'Mean Reversion (Optimized)': MeanReversionStrategy(create_optimized_config()),
         'Mean Reversion (Default)': MeanReversionStrategy(MeanReversionConfig()),
         'Mean Reversion (Conservative)': MeanReversionStrategy(create_conservative_config()),
-        'Mean Reversion (No Confirm)': MeanReversionStrategy(MeanReversionConfig(require_confirmation=False)),
         'Scalping (Trend Following)': ScalpingStrategy(ScalpingConfig()),
     }
 
@@ -274,7 +359,11 @@ def main():
 
     for name, strategy in strategies.items():
         print(f"\nRunning backtest: {name}...")
-        result = simple_backtest(data, strategy)
+        # Use engine backtest for MeanReversionStrategy to get multi-level exits
+        if isinstance(strategy, MeanReversionStrategy):
+            result = engine_backtest(data, strategy)
+        else:
+            result = simple_backtest(data, strategy)
         results[name] = result
 
     # Print comparison
@@ -286,10 +375,14 @@ def main():
     print("-" * 110)
 
     for name, result in results.items():
+        # win_rate from engine_backtest is already percentage, from simple_backtest is 0-1
+        win_rate = result['win_rate']
+        if win_rate <= 1.0 and result['total_trades'] > 0:  # simple_backtest returns 0-1
+            win_rate = win_rate * 100
         print(
             f"{name:<35} | "
             f"{result['total_trades']:>8} | "
-            f"{100*result['win_rate']:>9.1f}% | "
+            f"{win_rate:>9.1f}% | "
             f"${result['total_pnl']:>10.2f} | "
             f"${result['avg_pnl']:>9.2f} | "
             f"{result['profit_factor']:>5.2f} | "
@@ -303,23 +396,34 @@ def main():
     print("="*80)
 
     result = best_strategy[1]
+    total_trades = result['total_trades'] or 1  # Avoid division by zero
+
+    # Get values with defaults
+    longs = result.get('longs', 0)
+    shorts = result.get('shorts', 0)
+    targets_hit = result.get('targets_hit', 0)
+    stop_outs = result.get('stop_outs', 0)
+    time_stops = result.get('time_stops', 0)
+    avg_win = result.get('avg_win', 0)
+    avg_loss = result.get('avg_loss', 0)
+
     print(f"""
 Total Trades: {result['total_trades']}
-  - Long: {result['longs']}
-  - Short: {result['shorts']}
+  - Long: {longs}
+  - Short: {shorts}
 
-Win Rate: {100*result['win_rate']:.1f}%
+Win Rate: {result['win_rate'] if result['win_rate'] > 1 else result['win_rate']*100:.1f}%
 
 Exit Reasons:
-  - Take Profit: {result['targets_hit']} ({100*result['targets_hit']/result['total_trades']:.1f}%)
-  - Stop Loss: {result['stop_outs']} ({100*result['stop_outs']/result['total_trades']:.1f}%)
-  - Time Stop: {result['time_stops']} ({100*result['time_stops']/result['total_trades']:.1f}%)
+  - Take Profit: {targets_hit} ({100*targets_hit/total_trades:.1f}%)
+  - Stop Loss: {stop_outs} ({100*stop_outs/total_trades:.1f}%)
+  - Time Stop: {time_stops} ({100*time_stops/total_trades:.1f}%)
 
 P&L:
   - Total: ${result['total_pnl']:.2f}
   - Average: ${result['avg_pnl']:.2f}
-  - Avg Win: ${result['avg_win']:.2f}
-  - Avg Loss: ${result['avg_loss']:.2f}
+  - Avg Win: ${avg_win:.2f}
+  - Avg Loss: ${avg_loss:.2f}
   - Profit Factor: {result['profit_factor']:.2f}
   - Max Drawdown: ${result['max_drawdown']:.2f}
 """)
@@ -334,7 +438,7 @@ P&L:
         print(f"""
 Scalping Strategy Results:
   - Total Trades: {scalping_result['total_trades']}
-  - Win Rate: {100*scalping_result['win_rate']:.1f}%
+  - Win Rate: {scalping_result['win_rate'] if scalping_result['win_rate'] > 1 else scalping_result['win_rate']*100:.1f}%
   - Stop Outs: {scalping_result['stop_outs']} ({100*scalping_result['stop_outs']/scalping_result['total_trades']:.1f}%)
 
 ANALYSIS:

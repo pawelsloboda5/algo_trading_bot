@@ -10,6 +10,7 @@ from src.backtest.portfolio import Portfolio, TradeDirection
 from src.risk.risk_manager import RiskManager
 from src.risk.scalping_risk import ScalpingRiskConfig, ScalpingRiskManager
 from src.strategy.base_strategy import BaseStrategy, Signal
+from src.strategy.mean_reversion_strategy import MeanReversionStrategy
 from src.strategy.scalping_strategy import ScalpingStrategy
 
 logger = get_logger(__name__)
@@ -138,10 +139,13 @@ class BacktestEngine:
             commission_per_contract=self.config.commission_per_contract,
         )
 
-        # Run simulation (use scalping mode for ScalpingStrategy)
+        # Run simulation (use specialized modes for specific strategies)
         if isinstance(strategy, ScalpingStrategy):
             logger.info("using_scalping_simulation_mode")
             self._simulate_scalping(df, signals, strategy, portfolio)
+        elif isinstance(strategy, MeanReversionStrategy):
+            logger.info("using_mean_reversion_simulation_mode")
+            self._simulate_mean_reversion(df, signals, strategy, portfolio)
         else:
             self._simulate(df, signals, strategy, portfolio)
 
@@ -510,6 +514,186 @@ class BacktestEngine:
             logger.info("scalping_trades_rejected", count=trades_rejected)
         if partial_exits > 0:
             logger.info("scalping_partial_exits", count=partial_exits)
+
+    def _simulate_mean_reversion(
+        self,
+        data: pd.DataFrame,
+        signals: pd.Series,
+        strategy: MeanReversionStrategy,
+        portfolio: Portfolio,
+    ) -> None:
+        """Simulate mean reversion strategy with multi-level exits.
+
+        Supports:
+        - Partial position exits at multiple profit targets (50%/30%/20%)
+        - Breakeven stop management after first target
+        - Trailing stops after target 1
+        - Time-based exits
+
+        Args:
+            data: OHLCV data
+            signals: Trading signals
+            strategy: MeanReversionStrategy instance
+            portfolio: Portfolio to track state
+        """
+        current_signal = Signal.FLAT
+        slippage = self.config.slippage_ticks * self.config.tick_size
+        trades_rejected = 0
+        partial_exits = 0
+
+        for i, (timestamp, row) in enumerate(data.iterrows()):
+            close_price = row["close"]
+            high_price = row["high"]
+            low_price = row["low"]
+
+            new_signal = Signal(signals.iloc[i])
+
+            # Check exit conditions if in position
+            if portfolio.position is not None:
+                # Check all exit conditions using strategy method
+                # Note: current_atr is unused by MeanReversionStrategy (uses cent-based exits)
+                # but we pass a dummy value for interface compatibility
+                exit_result = strategy.check_exit_conditions(
+                    position_direction=Signal.LONG if portfolio.position.direction == TradeDirection.LONG else Signal.SHORT,
+                    entry_price=portfolio.position.entry_price,
+                    entry_time=portfolio.position.entry_time,
+                    current_price=close_price,
+                    current_high=high_price,
+                    current_low=low_price,
+                    current_time=timestamp,
+                    current_atr=close_price * 0.002,  # Dummy value, not used by MeanReversionStrategy
+                    position_state=portfolio.position.state,
+                    current_stop=portfolio.position.stop_loss or 0,
+                    tick_size=self.config.tick_size,
+                )
+
+                if exit_result is not None:
+                    action = exit_result.get("action")
+
+                    if action == "close_full":
+                        exit_price = exit_result["price"]
+                        # Apply slippage
+                        if portfolio.position.direction == TradeDirection.LONG:
+                            exit_price -= slippage
+                        else:
+                            exit_price += slippage
+
+                        trade = portfolio.close_position(exit_price, timestamp)
+
+                        # Update risk manager
+                        if self.risk_manager is not None and trade is not None:
+                            self.risk_manager.update_daily_pnl(trade.pnl, timestamp)
+
+                        current_signal = Signal.FLAT
+
+                    elif action == "close_partial":
+                        exit_price = exit_result["price"]
+                        percentage = exit_result["percentage"]
+
+                        # Apply slippage
+                        if portfolio.position.direction == TradeDirection.LONG:
+                            exit_price -= slippage
+                        else:
+                            exit_price += slippage
+
+                        partial_exit = portfolio.close_partial(
+                            price=exit_price,
+                            timestamp=timestamp,
+                            percentage=percentage,
+                            exit_type=exit_result.get("exit_type", "partial"),
+                        )
+
+                        if partial_exit is not None:
+                            partial_exits += 1
+
+                            # Update stop and state
+                            if "new_stop" in exit_result:
+                                portfolio.update_stop_loss(exit_result["new_stop"])
+                            if "new_state" in exit_result:
+                                portfolio.update_position_state(exit_result["new_state"])
+
+                            # Check if position fully closed
+                            if portfolio.position is None:
+                                current_signal = Signal.FLAT
+
+                    elif action == "update_stop":
+                        # Just update stop loss and state
+                        if "new_stop" in exit_result:
+                            portfolio.update_stop_loss(exit_result["new_stop"])
+                        if "new_state" in exit_result:
+                            portfolio.update_position_state(exit_result["new_state"])
+
+            # Handle signal changes (only if not already in position or signal reverses)
+            if new_signal != current_signal and portfolio.position is None:
+                # Open new position
+                if new_signal != Signal.FLAT:
+                    direction = (
+                        TradeDirection.LONG if new_signal == Signal.LONG else TradeDirection.SHORT
+                    )
+
+                    # Apply slippage to entry
+                    if direction == TradeDirection.LONG:
+                        entry_price = close_price + slippage
+                    else:
+                        entry_price = close_price - slippage
+
+                    # Calculate stop-loss (in cents from config)
+                    stop_loss = strategy.get_stop_loss(
+                        data.iloc[: i + 1], new_signal, entry_price
+                    )
+
+                    # Risk management validation
+                    if self.risk_manager is not None:
+                        validation = self.risk_manager.validate_trade(
+                            signal=new_signal,
+                            entry_price=entry_price,
+                            stop_loss_price=stop_loss,
+                            current_equity=portfolio.get_equity(close_price),
+                            timestamp=timestamp,
+                        )
+
+                        if not validation.allowed:
+                            logger.debug(
+                                "mean_reversion_trade_rejected",
+                                reason=validation.reason,
+                                timestamp=timestamp,
+                            )
+                            trades_rejected += 1
+                            portfolio.record_equity(timestamp, close_price)
+                            continue
+
+                        position_size = validation.position_size
+                    else:
+                        position_size = self.config.position_size
+
+                    portfolio.open_position(
+                        direction=direction,
+                        price=entry_price,
+                        quantity=position_size,
+                        timestamp=timestamp,
+                        stop_loss=stop_loss,
+                    )
+
+                    current_signal = new_signal
+
+            # Record equity
+            portfolio.record_equity(timestamp, close_price)
+
+        # Close any remaining position at end
+        if portfolio.position is not None:
+            final_price = data.iloc[-1]["close"]
+            if portfolio.position.direction == TradeDirection.LONG:
+                final_price -= slippage
+            else:
+                final_price += slippage
+            trade = portfolio.close_position(final_price, data.index[-1])
+            if self.risk_manager is not None and trade is not None:
+                self.risk_manager.update_daily_pnl(trade.pnl, data.index[-1])
+
+        if trades_rejected > 0:
+            logger.info("mean_reversion_trades_rejected", count=trades_rejected)
+        if partial_exits > 0:
+            logger.info("mean_reversion_partial_exits", count=partial_exits)
 
 
 def run_backtest(
