@@ -687,14 +687,27 @@ class ChartGenerator:
         Returns:
             List of equity values
         """
+        # Handle duplicate timestamps by keeping the last value for each timestamp
+        if equity_series.index.duplicated().any():
+            equity_series = equity_series[~equity_series.index.duplicated(keep='last')]
+
         values = []
         for t in times:
             # Find nearest time in equity series
-            idx = equity_series.index.get_indexer([t], method="nearest")[0]
-            if idx >= 0 and idx < len(equity_series):
-                values.append(equity_series.iloc[idx])
-            else:
-                values.append(equity_series.iloc[0] if len(equity_series) > 0 else 0)
+            try:
+                idx = equity_series.index.get_indexer([t], method="nearest")[0]
+                if idx >= 0 and idx < len(equity_series):
+                    values.append(equity_series.iloc[idx])
+                else:
+                    values.append(equity_series.iloc[0] if len(equity_series) > 0 else 0)
+            except Exception:
+                # Fallback: find closest manually
+                if len(equity_series) > 0:
+                    time_diffs = abs(equity_series.index - t)
+                    closest_idx = time_diffs.argmin()
+                    values.append(equity_series.iloc[closest_idx])
+                else:
+                    values.append(0)
         return values
 
     def _empty_chart(self, message: str) -> go.Figure:

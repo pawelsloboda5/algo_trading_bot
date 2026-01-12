@@ -8,6 +8,30 @@ After comprehensive analysis of MCL (Micro WTI Crude Oil Futures) historical dat
 
 ---
 
+## CRITICAL BUG DISCOVERED (2026-01-12)
+
+### Data Quality Issue
+
+**Problem**: The raw data files contain **multiple symbols mixed together**:
+- Outright futures: MCLQ5, MCLU5, MCLV5, MCLX5, MCLZ5 (different contract months)
+- Calendar spreads: MCLQ5-MCLU5, MCLQ5-MCLV5, etc.
+
+**Impact**: The backtest was entering on one contract (e.g., MCLU5 at $65.66) and exiting on a different contract (e.g., MCLQ5 at $68.22), generating **fake $2.50 profits per trade**.
+
+**Result**: Inflated metrics showing:
+- $1,064,448 profit (FAKE)
+- 83.84% win rate (FAKE)
+- 22.64 profit factor (FAKE)
+
+**Fix Applied**: Updated `load_clean_data()` in both `deep_analysis.py` and `backtest_comparison.py` to:
+1. Filter out calendar spreads (symbols containing '-')
+2. Select only the most liquid outright contract per day
+3. Remove duplicate timestamps
+
+**Status**: Re-run backtests with clean data to get accurate results.
+
+---
+
 ## Current Strategy Failure Diagnosis
 
 ### The Problem

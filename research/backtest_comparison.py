@@ -31,12 +31,25 @@ storage = DataStorage(DATA_DIR)
 
 
 def load_clean_data(start_date: datetime, end_date: datetime, schema: str = "ohlcv-1m") -> pd.DataFrame:
-    """Load and clean data."""
+    """Load and clean data, filtering for front-month outright futures only."""
     dfs = []
     current = start_date
     while current <= end_date:
         df = storage.load_dataframe("MCL_FUT", current, schema)
         if df is not None and not df.empty:
+            # CRITICAL: Filter for single front-month contract only
+            # Exclude calendar spreads (contain '-') and keep only outrights
+            if 'symbol' in df.columns:
+                # Filter: outright futures only (no spreads with '-')
+                df_outrights = df[~df['symbol'].str.contains('-', na=False)]
+
+                if not df_outrights.empty:
+                    # Get the symbol with highest total volume for the day (most liquid)
+                    vol_by_sym = df_outrights.groupby('symbol')['volume'].sum()
+                    if len(vol_by_sym) > 0:
+                        most_liquid = vol_by_sym.idxmax()
+                        df = df_outrights[df_outrights['symbol'] == most_liquid].copy()
+
             dfs.append(df)
         current += timedelta(days=1)
 
@@ -46,15 +59,18 @@ def load_clean_data(start_date: datetime, end_date: datetime, schema: str = "ohl
     df = pd.concat(dfs, ignore_index=True)
     df = df.sort_values("ts_event").reset_index(drop=True)
 
-    # Clean: Keep only reasonable MCL prices
+    # Clean: Keep only reasonable MCL prices ($50-$90)
     df = df[(df['close'] > 50) & (df['close'] < 90)]
 
-    # Remove extreme returns
+    # CRITICAL: Remove duplicate timestamps (keep last)
+    df['ts_event'] = pd.to_datetime(df['ts_event'])
+    df = df.drop_duplicates(subset=['ts_event'], keep='last')
+
+    # Remove extreme returns (> 2% in 1 minute is unrealistic)
     df['returns'] = df['close'].pct_change()
     df = df[(df['returns'].abs() < 0.02) | (df['returns'].isna())]
 
     # Set index to timestamp
-    df['ts_event'] = pd.to_datetime(df['ts_event'])
     if df['ts_event'].dt.tz is None:
         df['ts_event'] = df['ts_event'].dt.tz_localize('UTC')
     df = df.set_index('ts_event')

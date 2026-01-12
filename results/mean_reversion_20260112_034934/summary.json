@@ -1,0 +1,109 @@
+{
+  "run_id": "mean_reversion_20260112_034934",
+  "timestamp": "2026-01-12T03:49:34.951835",
+  "symbol": "MCL_FUT",
+  "strategy": {
+    "name": "MeanReversionStrategy",
+    "class": "MeanReversionStrategy",
+    "parameters": {
+      "ema_period": 20,
+      "ema_deviation_threshold": "0.3%",
+      "rsi_period": 14,
+      "rsi_levels": "35.0/65.0",
+      "volume_spike_threshold": "2.0x",
+      "targets_cents": "5.0/10.0/15.0",
+      "target_pcts": "50.0/30.0/20.0",
+      "stop_loss_cents": 11.0,
+      "breakeven_trigger": 4.0,
+      "trail_offset": 3.0,
+      "max_hold_bars": 20,
+      "session_hours": "14-20 UTC",
+      "require_confirmation": false,
+      "volatility_filter": "20.0-80.0%",
+      "require_conditions": 1
+    }
+  },
+  "data_range": {
+    "start": "2025-07-13",
+    "end": "2026-01-08",
+    "trading_days": 179,
+    "total_bars": 167872
+  },
+  "performance": {
+    "total_return_pct": -152.26,
+    "total_return_usd": -7613.18,
+    "cagr": NaN,
+    "sharpe_ratio": -0.29,
+    "sortino_ratio": -0.07,
+    "calmar_ratio": NaN,
+    "max_drawdown_pct": 152.23,
+    "max_drawdown_usd": 7616.81,
+    "win_rate": 52.35,
+    "profit_factor": 0.47,
+    "avg_trade_pnl": -2.84,
+    "avg_winner": 4.85,
+    "avg_loser": -11.29,
+    "largest_winner": 41.63,
+    "largest_loser": -13.37,
+    "total_trades": 1807,
+    "winning_trades": 946,
+    "losing_trades": 861,
+    "avg_hold_time_minutes": 13.97,
+    "max_consecutive_wins": 11,
+    "max_consecutive_losses": 7,
+    "time_in_market": 2.77
+  },
+  "risk_metrics": {
+    "risk_per_trade": 0.02,
+    "daily_loss_limit": 0.05,
+    "max_position_contracts": 5,
+    "use_risk_manager": false
+  },
+  "time_analysis": {
+    "best_hour": 19,
+    "worst_hour": 14,
+    "best_day_of_week": "Tuesday",
+    "worst_day_of_week": "Friday",
+    "profitable_hours": [],
+    "unprofitable_hours": [
+      14,
+      15,
+      16,
+      17,
+      18,
+      19
+    ],
+    "hourly_pnl": {
+      "14": -1266.54,
+      "15": -1216.89,
+      "16": -800.15,
+      "17": -644.19,
+      "18": -715.93,
+      "19": -493.89
+    },
+    "daily_pnl": {
+      "Friday": -1178.68,
+      "Monday": -1032.87,
+      "Thursday": -925.98,
+      "Tuesday": -901.35,
+      "Wednesday": -1098.71
+    }
+  },
+  "streak_analysis": {
+    "max_win_streak": 11,
+    "max_loss_streak": 7,
+    "avg_win_streak": 2.07,
+    "avg_loss_streak": 1.88,
+    "current_streak": 3,
+    "current_streak_type": "loss"
+  },
+  "recommendations": [
+    "Risk/reward ratio is poor (0.43:1). Consider widening profit targets or tightening stops.",
+    "Max drawdown is high (152.2%). Consider reducing position size or adding additional filters.",
+    "Significant losses at 14:00 ($-1266.54). Consider adding time filter to avoid trading during this hour.",
+    "Performance degrades on Fridays ($-1178.68). Consider reducing position size or skipping trades on this day.",
+    "Max losing streak of 7 trades. Consider implementing a cool-down period after consecutive losses.",
+    "Low Sharpe ratio (-0.29) indicates poor risk-adjusted returns. Consider adding volatility-based position sizing.",
+    "Low time in market (2.8%). Strategy may be too conservative. Consider relaxing entry criteria."
+  ]
+}
